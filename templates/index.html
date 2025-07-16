@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Clone Studio</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🎙️ Voice Clone Studio</h1>
+            <p>Upload voice samples or record live audio to create personalized voice models</p>
+        </header>
+
+        <div id="statusMessage" class="status-message hidden"></div>
+
+        <div class="main-content">
+            <!-- File Upload Section -->
+            <div class="card">
+                <h2>📁 Upload Voice Samples</h2>
+                <div id="uploadArea" class="upload-area">
+                    <div class="upload-icon">📤</div>
+                    <p>Drop audio files here or click to browse</p>
+                    <p style="font-size: 0.9em; color: #6c757d;">Supported formats: WAV, MP3</p>
+                </div>
+                <input type="file" id="fileInput" class="file-input" multiple accept="audio/*">
+                
+                <div class="file-list" id="fileList"></div>
+                
+                <div style="margin-top: 20px;">
+                    <input type="text" id="speakerName" placeholder="Enter speaker name..." 
+                           style="width: 100%; padding: 10px; margin-bottom: 10px; border: 2px solid #e9ecef; border-radius: 5px;">
+                    <button id="uploadTrainBtn" class="btn" disabled>
+                        🚀 Upload & Train Voice Model
+                    </button>
+                </div>
+            </div>
+
+            <!-- Live Recording Section -->
+            <div class="card">
+                <h2>🎤 Live Voice Recording</h2>
+                <p id="microphoneStatus" style="margin-bottom: 20px; color: #6c757d;">Checking microphone...</p>
+                
+                <div class="audio-controls">
+                    <button id="startRecording" class="btn btn-success" disabled>
+                        ⏺️ Start Recording
+                    </button>
+                    <button id="stopRecording" class="btn btn-danger" disabled>
+                        ⏹️ Stop Recording
+                    </button>
+                </div>
+
+                <div id="recordingIndicator" class="recording-indicator">
+                    <div class="recording-dot"></div>
+                    <span>Recording...</span>
+                </div>
+
+                <div class="timer" id="timer">00:30</div>
+
+                <div class="progress-bar">
+                    <div id="recordingProgress" class="progress-fill"></div>
+                </div>
+
+                <p style="text-align: center; color: #6c757d; font-size: 0.9em; margin-top: 15px;">
+                    Maximum recording time: 30 seconds<br>
+                    Speak clearly for better voice cloning results
+                </p>
+            </div>
+        </div>
+
+        <!-- Voice Synthesis Section -->
+        <div class="synthesis-section">
+            <h2>🗣️ Voice Synthesis</h2>
+            
+            <div class="speaker-selection">
+                <h3>Select Speaker</h3>
+                <div id="speakerGrid" class="speaker-grid">
+                    <!-- Speakers will be loaded dynamically -->
+                </div>
+            </div>
+
+            <div>
+                <h3>Enter Text to Synthesize</h3>
+                <textarea id="textInput" class="text-input" 
+                          placeholder="Type the text you want to convert to speech..."></textarea>
+                
+                <button id="synthesizeBtn" class="btn">
+                    🎵 Generate Speech
+                </button>
+            </div>
+
+            <audio id="audioPlayer" class="audio-player" controls style="display: none;">
+                Your browser does not support the audio element.
+            </audio>
+        </div>
+
+        <!-- Instructions Section -->
+        <div class="card" style="margin-top: 30px;">
+            <h2>📋 Instructions</h2>
+            <ol style="line-height: 1.6;">
+                <li><strong>Upload Audio Files:</strong> Drag and drop or select multiple audio files containing clear speech samples</li>
+                <li><strong>Live Recording:</strong> Use the microphone to record 30 seconds of clear speech</li>
+                <li><strong>Speaker Name:</strong> Enter a unique name for the voice model</li>
+                <li><strong>Train Model:</strong> Click "Upload & Train" to create the voice model (this may take several minutes)</li>
+                <li><strong>Synthesize:</strong> Select a trained speaker and enter text to generate speech</li>
+            </ol>
+            
+            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                <h4>Tips for Best Results:</h4>
+                <ul style="margin-left: 20px; line-height: 1.5;">
+                    <li>Use high-quality audio recordings (clear, no background noise)</li>
+                    <li>Provide at least 5-10 minutes of speech samples</li>
+                    <li>Include varied speech patterns and emotions</li>
+                    <li>Speak at a natural pace and volume</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
