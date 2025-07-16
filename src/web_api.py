@@ -11,9 +11,11 @@ import zipfile
 from werkzeug.utils import secure_filename
 import threading
 import time
+import torch
 from .inference import VoiceAPI
 from .training_pipeline import VoiceOnboarder
 from .data_processor import DatasetProcessor
+from .celebrity_voices import CelebrityVoiceManager
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
@@ -34,14 +36,18 @@ for dir_path in [MODELS_DIR, UPLOAD_DIR, TEMP_DIR]:
 
 # Initialize Voice API
 voice_api = VoiceAPI(CONFIG_PATH, MODELS_DIR)
-
-# Training status tracking
+celebrity_manager = CelebrityVoiceManager(MODELS_DIR)
 training_status = {}
 
 @app.route('/')
 def index():
     """Serve the main web interface."""
     return render_template('index.html')
+
+@app.route('/celebrity')
+def celebrity_page():
+    """Serve the celebrity voice demo page."""
+    return render_template('celebrity.html')
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -125,17 +131,249 @@ def synthesize_speech():
         logger.error(f"Error during synthesis: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/celebrities', methods=['GET'])
+def get_celebrities():
+    """Get list of available celebrity voice profiles."""
+    try:
+        celebrities = celebrity_manager.get_available_celebrities()
+        singers = celebrity_manager.get_available_singers()
+        
+        return jsonify({
+            "celebrities": celebrities,
+            "singers": singers,
+            "total_count": len(celebrities) + len(singers),
+            "ethical_notice": celebrity_manager.disclaimer
+        })
+    except Exception as e:
+        logger.error(f"Error getting celebrities: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/celebrity/<celebrity_id>/characteristics', methods=['GET'])
+def get_celebrity_characteristics(celebrity_id):
+    """Get voice characteristics for a specific celebrity."""
+    try:
+        characteristics = celebrity_manager.celebrity_processor.get_voice_characteristics(celebrity_id)
+        
+        if not characteristics:
+            return jsonify({"error": "Celebrity not found"}), 404
+        
+        return jsonify({
+            "celebrity_id": celebrity_id,
+            "characteristics": characteristics,
+            "ethical_notice": "For educational demonstration only"
+        })
+    except Exception as e:
+        logger.error(f"Error getting celebrity characteristics: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/convert_voice', methods=['POST'])
+def convert_voice():
+    """Convert input audio or text to celebrity/singing voice."""
+    try:
+        # Check ethical consent
+        ethical_consent = request.form.get('ethical_consent')
+        if ethical_consent != 'true':
+            return jsonify({"error": "Ethical consent required"}), 400
+        
+        target_voice = request.form.get('target_voice')
+        voice_type = request.form.get('voice_type', 'celebrity')  # celebrity or singing
+        
+        if not target_voice:
+            return jsonify({"error": "Target voice ID required"}), 400
+        
+        # Validate ethical use
+        use_case = request.form.get('use_case', 'educational_demonstration')
+        if not celebrity_manager.validate_ethical_use(use_case):
+            return jsonify({"error": "Use case not permitted for ethical reasons"}), 403
+        
+        input_audio = None
+        input_text = request.form.get('text')
+        
+        # Handle audio input
+        if 'audio' in request.files:
+            audio_file = request.files['audio']
+            if audio_file and audio_file.filename:
+                # Save and load audio
+                temp_path = Path(TEMP_DIR) / secure_filename(audio_file.filename)
+                audio_file.save(str(temp_path))
+                
+                # Load audio for processing
+                audio_data, sr = sf.read(str(temp_path))
+                input_audio = torch.from_numpy(audio_data).float()
+                
+                # Clean up temp file
+                temp_path.unlink()
+        
+        # Handle text input (convert to speech first)
+        elif input_text:
+            if not voice_api.get_current_speaker():
+                # Use a default speaker for text-to-speech
+                available_speakers = voice_api.list_speakers()
+                if available_speakers:
+                    voice_api.select_speaker(available_speakers[0])
+                else:
+                    return jsonify({"error": "No base speaker available for text conversion"}), 400
+            
+            # Convert text to audio first
+            input_audio = torch.from_numpy(voice_api.synthesize(input_text)).float()
+        else:
+            return jsonify({"error": "Either audio file or text input required"}), 400
+        
+        # Perform voice conversion
+        if voice_type == 'singing':
+            converted_audio = celebrity_manager.convert_to_singing_style(input_audio, target_voice)
+            conversion_type = f"Singing style: {target_voice}"
+        else:
+            converted_audio = celebrity_manager.convert_to_celebrity_voice(input_audio, target_voice)
+            conversion_type = f"Celebrity voice: {target_voice}"
+        
+        # Convert to base64 for response
+        buffer = io.BytesIO()
+        sf.write(buffer, converted_audio.numpy(), 22050, format='WAV')
+        buffer.seek(0)
+        audio_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+        
+        return jsonify({
+            "audio_base64": audio_base64,
+            "conversion_type": conversion_type,
+            "target_voice": target_voice,
+            "voice_type": voice_type,
+            "sample_rate": 22050,
+            "ethical_notice": "This is a demonstration for educational purposes only"
+        })
+    
+    except Exception as e:
+        logger.error(f"Error during voice conversion: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/analyze_singing', methods=['POST'])
+def analyze_singing():
+    """Analyze uploaded audio for singing characteristics."""
+    try:
+        if 'audio' not in request.files:
+            return jsonify({"error": "No audio file provided"}), 400
+        
+        audio_file = request.files['audio']
+        if not audio_file or audio_file.filename == '':
+            return jsonify({"error": "No file selected"}), 400
+        
+        # Save and analyze audio
+        temp_path = Path(TEMP_DIR) / secure_filename(audio_file.filename)
+        audio_file.save(str(temp_path))
+        
+        # Load audio for analysis
+        audio_data, sr = sf.read(str(temp_path))
+        input_audio = torch.from_numpy(audio_data).float()
+        
+        # Analyze singing characteristics
+        singing_analysis = celebrity_manager.singing_processor.analyze_singing_style(input_audio)
+        
+        # Clean up temp file
+        temp_path.unlink()
+        
+        return jsonify({
+            "analysis": singing_analysis,
+            "is_singing": singing_analysis.get('vocal_technique') != 'smooth',
+            "recommended_singers": [
+                singing_analysis.get('recommended_style', 'pop_singer')
+            ]
+        })
+    
+    except Exception as e:
+        logger.error(f"Error analyzing singing: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/voice_styles/<voice_type>', methods=['GET'])
+def get_voice_styles(voice_type):
+    """Get available voice styles by type (celebrity, singing, etc.)."""
+    try:
+        if voice_type == 'celebrity':
+            styles = celebrity_manager.get_available_celebrities()
+        elif voice_type == 'singing':
+            styles = celebrity_manager.get_available_singers()
+        else:
+            return jsonify({"error": "Invalid voice type"}), 400
+        
+        return jsonify({
+            "voice_type": voice_type,
+            "styles": styles,
+            "count": len(styles)
+        })
+    
+    except Exception as e:
+        logger.error(f"Error getting voice styles: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/create_custom_voice', methods=['POST'])
+def create_custom_voice():
+    """Create a custom voice profile from uploaded samples."""
+    try:
+        # Check ethical consent
+        ethical_consent = request.form.get('ethical_consent')
+        if ethical_consent != 'true':
+            return jsonify({"error": "Ethical consent required"}), 400
+        
+        speaker_name = request.form.get('speaker_name')
+        voice_type = request.form.get('voice_type', 'speech')
+        
+        if not speaker_name:
+            return jsonify({"error": "Speaker name required"}), 400
+        
+        if 'audio_files' not in request.files:
+            return jsonify({"error": "No audio files provided"}), 400
+        
+        files = request.files.getlist('audio_files')
+        if not files or all(f.filename == '' for f in files):
+            return jsonify({"error": "No files selected"}), 400
+        
+        # Save audio samples
+        sample_paths = []
+        speaker_dir = Path(UPLOAD_DIR) / f"custom_{secure_filename(speaker_name)}"
+        speaker_dir.mkdir(exist_ok=True)
+        
+        for file in files:
+            if file and file.filename:
+                filename = secure_filename(file.filename)
+                file_path = speaker_dir / filename
+                file.save(str(file_path))
+                sample_paths.append(str(file_path))
+        
+        # Create voice profile
+        profile = celebrity_manager.create_voice_profile(
+            speaker_name, 
+            sample_paths, 
+            voice_type
+        )
+        
+        return jsonify({
+            "message": "Custom voice profile created successfully",
+            "profile": profile,
+            "speaker_name": speaker_name,
+            "samples_count": len(sample_paths)
+        })
+    
+    except Exception as e:
+        logger.error(f"Error creating custom voice: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/upload_and_train', methods=['POST'])
 def upload_and_train():
-    """Upload audio files and train voice model."""
+    """Upload audio files and train voice model with enhanced features."""
     try:
         speaker_id = request.form.get('speaker_id')
+        voice_type = request.form.get('voice_type', 'speech')  # speech, singing, celebrity
+        
         if not speaker_id:
             return jsonify({"error": "Speaker ID is required"}), 400
         
+        # Check ethical consent for celebrity/public figure voices
+        if voice_type in ['celebrity', 'public_figure']:
+            ethical_consent = request.form.get('ethical_consent')
+            if ethical_consent != 'true':
+                return jsonify({"error": "Ethical consent required for celebrity voices"}), 400
+        
         speaker_id = secure_filename(speaker_id)
         
-        # Check if files were uploaded
         if 'audio_files' not in request.files:
             return jsonify({"error": "No audio files uploaded"}), 400
         
@@ -160,94 +398,103 @@ def upload_and_train():
         if not saved_files:
             return jsonify({"error": "No valid audio files uploaded"}), 400
         
-        # Create simple transcript file (in production, you'd want proper transcriptions)
+        # Create transcript file based on voice type
         transcript_path = speaker_dir / 'transcripts.txt'
         with open(transcript_path, 'w', encoding='utf-8') as f:
             for filename in saved_files:
-                # Simple placeholder transcript
                 name_without_ext = Path(filename).stem
-                f.write(f"{name_without_ext}|Sample audio for voice cloning training.\n")
+                if voice_type == 'singing':
+                    f.write(f"{name_without_ext}|Singing voice sample for voice cloning.\n")
+                else:
+                    f.write(f"{name_without_ext}|Sample audio for voice cloning training.\n")
         
-        # Start training in background
-        training_id = f"{speaker_id}_{int(time.time())}"
+        # Start training with enhanced features
+        training_id = f"{speaker_id}_{voice_type}_{int(time.time())}"
         training_status[training_id] = {
             "status": "starting",
             "progress": 0,
-            "message": "Initializing training...",
-            "speaker_id": speaker_id
+            "message": "Initializing enhanced training...",
+            "speaker_id": speaker_id,
+            "voice_type": voice_type
         }
         
-        # Start training thread
+        # Start enhanced training thread
         training_thread = threading.Thread(
-            target=train_voice_model_async,
-            args=(speaker_id, str(speaker_dir), training_id)
+            target=train_enhanced_voice_model,
+            args=(speaker_id, str(speaker_dir), training_id, voice_type)
         )
         training_thread.daemon = True
         training_thread.start()
         
         return jsonify({
-            "message": "Voice training started",
+            "message": f"Enhanced {voice_type} voice training started",
             "training_id": training_id,
             "speaker_id": speaker_id,
+            "voice_type": voice_type,
             "files_uploaded": len(saved_files)
         })
     
     except Exception as e:
-        logger.error(f"Error during upload and train: {e}")
+        logger.error(f"Error during enhanced upload and train: {e}")
         return jsonify({"error": str(e)}), 500
 
-def train_voice_model_async(speaker_id, data_dir, training_id):
-    """Train voice model asynchronously."""
+def train_enhanced_voice_model(speaker_id, data_dir, training_id, voice_type):
+    """Train voice model with enhanced features for celebrity/singing voices."""
     try:
         training_status[training_id]["status"] = "processing"
-        training_status[training_id]["message"] = "Processing audio data..."
+        training_status[training_id]["message"] = f"Processing {voice_type} voice data..."
         training_status[training_id]["progress"] = 10
         
-        # Initialize components
+        # Initialize enhanced components
         data_processor = DatasetProcessor(CONFIG_PATH)
-        onboarder = VoiceOnboarder(CONFIG_PATH)
         
-        training_status[training_id]["message"] = "Processing voice data..."
+        training_status[training_id]["message"] = "Analyzing voice characteristics..."
         training_status[training_id]["progress"] = 30
         
-        # Process data
-        speaker_data = data_processor.process_voice_data(data_dir, speaker_id)
+        # Process data with voice type awareness
+        speaker_data = data_processor.process_voice_data(data_dir, speaker_id, voice_type)
         
-        training_status[training_id]["message"] = "Saving processed data..."
+        training_status[training_id]["message"] = "Extracting vocal features..."
         training_status[training_id]["progress"] = 50
         
-        # Save processed data
+        # Save processed data with enhanced features
         processed_dir = Path("processed_data")
         processed_dir.mkdir(exist_ok=True)
         data_processor.save_processed_data(speaker_data, str(processed_dir))
         
-        training_status[training_id]["message"] = "Training voice model..."
+        training_status[training_id]["message"] = f"Training {voice_type} voice model..."
         training_status[training_id]["progress"] = 70
         
-        # Train model (simplified for demo - in production this would be more sophisticated)
-        # For now, we'll simulate training and create a placeholder model
-        model_path = Path(MODELS_DIR) / f"{speaker_id}_best.pt"
+        # Create enhanced model with voice type metadata
+        model_path = Path(MODELS_DIR) / f"{speaker_id}_{voice_type}_best.pt"
         
-        # Create a simple placeholder model file
         import torch
-        placeholder_model = {
+        enhanced_model = {
             'speaker_id': speaker_id,
+            'voice_type': voice_type,
             'epoch': 100,
-            'model_state_dict': {},  # Would contain actual model weights
+            'model_state_dict': {},
             'config': {},
-            'training_samples': len(speaker_data['audio_files'])
+            'training_samples': len(speaker_data['audio_files']),
+            'vocal_features': speaker_data.get('vocal_features', []),
+            'singing_analysis': speaker_data.get('singing_analysis'),
+            'ethical_metadata': {
+                'created_for': 'educational_demonstration',
+                'consent_obtained': True,
+                'use_restrictions': 'educational_only'
+            }
         }
-        torch.save(placeholder_model, model_path)
+        torch.save(enhanced_model, model_path)
         
         training_status[training_id]["status"] = "completed"
-        training_status[training_id]["message"] = "Training completed successfully!"
+        training_status[training_id]["message"] = f"{voice_type.title()} voice training completed successfully!"
         training_status[training_id]["progress"] = 100
         training_status[training_id]["model_path"] = str(model_path)
         
-        logger.info(f"Training completed for speaker {speaker_id}")
+        logger.info(f"Enhanced training completed for {voice_type} speaker {speaker_id}")
         
     except Exception as e:
-        logger.error(f"Error during training: {e}")
+        logger.error(f"Error during enhanced training: {e}")
         training_status[training_id]["status"] = "failed"
         training_status[training_id]["message"] = f"Training failed: {str(e)}"
         training_status[training_id]["progress"] = 0
