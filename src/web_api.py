@@ -585,22 +585,32 @@ def download_model(speaker_id):
 
 @app.route('/generate_speech', methods=['POST'])
 def generate_speech():
+    """Generate speech with support for normal, celebrity, and singing voices."""
     try:
         data = request.get_json()
         text = data.get('text', '')
         speaker_name = data.get('speaker', '')
-        voice_type = data.get('voice_type', 'normal')  # normal, celebrity, singing
+        voice_type = data.get('voice_type', 'normal')
         
         if not text or not speaker_name:
             return jsonify({'error': 'Text and speaker name are required'}), 400
         
         # Generate speech based on voice type
         if voice_type == 'celebrity':
-            audio_path = generate_celebrity_speech(text, speaker_name)
+            # Use celebrity voice conversion
+            converted_audio = celebrity_manager.convert_text_to_celebrity_voice(text, speaker_name)
+            audio_path = save_temp_audio(converted_audio, f'{speaker_name}_celebrity_generated.wav')
         elif voice_type == 'singing':
-            audio_path = generate_singing_speech(text, speaker_name)
+            # Use singing voice synthesis
+            converted_audio = celebrity_manager.convert_text_to_singing_voice(text, speaker_name)
+            audio_path = save_temp_audio(converted_audio, f'{speaker_name}_singing_generated.wav')
         else:
-            audio_path = generate_normal_speech(text, speaker_name)
+            # Use normal trained voice
+            if not voice_api.select_speaker(speaker_name):
+                return jsonify({'error': f'Speaker {speaker_name} not found'}), 404
+            
+            audio = voice_api.synthesize(text)
+            audio_path = save_temp_audio(audio, f'{speaker_name}_generated.wav')
         
         if audio_path and os.path.exists(audio_path):
             return send_file(audio_path, as_attachment=True, download_name=f'{speaker_name}_generated.wav')
@@ -608,45 +618,45 @@ def generate_speech():
             return jsonify({'error': 'Failed to generate speech'}), 500
             
     except Exception as e:
+        logger.error(f"Error generating speech: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/get_speakers')
-def get_speakers():
+@app.route('/get_all_speakers', methods=['GET'])
+def get_all_speakers():
+    """Get all available speakers by type."""
     try:
+        normal_speakers = voice_api.list_speakers()
+        celebrity_speakers = celebrity_manager.get_available_celebrities()
+        singing_speakers = celebrity_manager.get_available_singers()
+        
         speakers = {
-            'normal': get_trained_speakers(),
-            'celebrity': get_celebrity_speakers(),
-            'singing': get_singing_speakers()
+            'normal': normal_speakers,
+            'celebrity': celebrity_speakers,
+            'singing': singing_speakers
         }
         return jsonify(speakers)
     except Exception as e:
+        logger.error(f"Error getting all speakers: {e}")
         return jsonify({'error': str(e)}), 500
 
-def generate_normal_speech(text, speaker_name):
-    # ...existing speech generation logic...
-    pass
-
-def generate_celebrity_speech(text, speaker_name):
-    # Implement celebrity voice cloning
-    # Use pre-trained celebrity models
-    pass
-
-def generate_singing_speech(text, speaker_name):
-    # Implement singing voice synthesis
-    # Convert text to singing with specified voice
-    pass
-
-def get_trained_speakers():
-    # ...existing code to get trained speakers...
-    pass
-
-def get_celebrity_speakers():
-    # Return list of available celebrity voices
-    return ['Celebrity1', 'Celebrity2', 'Celebrity3']
-
-def get_singing_speakers():
-    # Return list of available singing voices
-    return ['Singer1', 'Singer2', 'Singer3']
+def save_temp_audio(audio_data, filename):
+    """Save audio data to temporary file and return path."""
+    try:
+        temp_path = Path(TEMP_DIR) / filename
+        
+        # Handle different audio data types
+        if isinstance(audio_data, torch.Tensor):
+            audio_numpy = audio_data.numpy()
+        elif isinstance(audio_data, np.ndarray):
+            audio_numpy = audio_data
+        else:
+            audio_numpy = np.array(audio_data)
+        
+        sf.write(str(temp_path), audio_numpy, 22050)
+        return str(temp_path)
+    except Exception as e:
+        logger.error(f"Error saving temp audio: {e}")
+        return None
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
