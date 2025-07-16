@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Celebrity Voice Clone - Educational Demo</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .ethical-warning {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            color: #856404;
+        }
+        .celebrity-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .celebrity-card {
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .celebrity-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .celebrity-card.selected {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+        .voice-type-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e9ecef;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+        .tab.active {
+            border-bottom-color: #667eea;
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🎭 Celebrity Voice Demo</h1>
+            <p>Educational demonstration of voice conversion technology</p>
+        </header>
+
+        <div class="ethical-warning">
+            <h3>⚠️ Important Ethical Notice</h3>
+            <p><strong>This feature is for EDUCATIONAL and DEMONSTRATION purposes only.</strong></p>
+            <ul>
+                <li>Do NOT use for impersonation, fraud, or deceptive practices</li>
+                <li>Respect personality rights and intellectual property</li>
+                <li>Obtain proper consent before using anyone's voice</li>
+                <li>Consider the potential harm of synthetic voice technology</li>
+            </ul>
+            <label>
+                <input type="checkbox" id="ethicalConsent" required>
+                I understand and agree to use this technology ethically and responsibly
+            </label>
+        </div>
+
+        <div id="statusMessage" class="status-message hidden"></div>
+
+        <div class="voice-type-tabs">
+            <div class="tab active" data-type="political">Political Figures</div>
+            <div class="tab" data-type="entertainment">Entertainment</div>
+            <div class="tab" data-type="singing">Singing Voices</div>
+        </div>
+
+        <div class="main-content">
+            <div class="card">
+                <h2>Select Voice Style</h2>
+                <div id="celebrityGrid" class="celebrity-grid">
+                    <!-- Celebrity options will be loaded here -->
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Input Audio or Text</h2>
+                
+                <div class="upload-area" id="audioUploadArea">
+                    <div class="upload-icon">🎵</div>
+                    <p>Upload audio file to convert</p>
+                    <p style="font-size: 0.9em; color: #6c757d;">Or record live audio below</p>
+                </div>
+                <input type="file" id="audioInput" class="file-input" accept="audio/*">
+                
+                <div class="audio-controls">
+                    <button id="startRecording" class="btn btn-success">🎤 Record Audio</button>
+                    <button id="stopRecording" class="btn btn-danger" disabled>⏹️ Stop</button>
+                </div>
+                
+                <div>
+                    <h3>Or Enter Text</h3>
+                    <textarea id="textInput" class="text-input" 
+                              placeholder="Enter text to convert to selected voice style..."></textarea>
+                </div>
+                
+                <button id="convertVoice" class="btn" disabled>
+                    🎭 Convert Voice
+                </button>
+            </div>
+        </div>
+
+        <div class="synthesis-section">
+            <h2>🎵 Voice Conversion Result</h2>
+            <audio id="resultAudio" class="audio-player" controls style="display: none;">
+                Your browser does not support the audio element.
+            </audio>
+            
+            <div id="conversionInfo" style="display: none; margin-top: 20px;">
+                <h4>Conversion Details:</h4>
+                <div id="conversionDetails"></div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 30px;">
+            <h2>🛡️ Responsible AI Guidelines</h2>
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                <h4>Please use this technology responsibly:</h4>
+                <ul style="line-height: 1.6;">
+                    <li><strong>Educational Purpose:</strong> This demo shows AI capabilities for learning</li>
+                    <li><strong>No Impersonation:</strong> Don't pretend to be someone else</li>
+                    <li><strong>Respect Rights:</strong> Honor personality and intellectual property rights</li>
+                    <li><strong>Get Consent:</strong> Always obtain permission before using someone's voice</li>
+                    <li><strong>Consider Impact:</strong> Think about potential misuse and harm</li>
+                    <li><strong>Report Misuse:</strong> Report any unethical use you encounter</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/celebrity.js') }}"></script>
+</body>
+</html>
