@@ -583,5 +583,70 @@ def download_model(speaker_id):
         logger.error(f"Error downloading model: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/generate_speech', methods=['POST'])
+def generate_speech():
+    try:
+        data = request.get_json()
+        text = data.get('text', '')
+        speaker_name = data.get('speaker', '')
+        voice_type = data.get('voice_type', 'normal')  # normal, celebrity, singing
+        
+        if not text or not speaker_name:
+            return jsonify({'error': 'Text and speaker name are required'}), 400
+        
+        # Generate speech based on voice type
+        if voice_type == 'celebrity':
+            audio_path = generate_celebrity_speech(text, speaker_name)
+        elif voice_type == 'singing':
+            audio_path = generate_singing_speech(text, speaker_name)
+        else:
+            audio_path = generate_normal_speech(text, speaker_name)
+        
+        if audio_path and os.path.exists(audio_path):
+            return send_file(audio_path, as_attachment=True, download_name=f'{speaker_name}_generated.wav')
+        else:
+            return jsonify({'error': 'Failed to generate speech'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/get_speakers')
+def get_speakers():
+    try:
+        speakers = {
+            'normal': get_trained_speakers(),
+            'celebrity': get_celebrity_speakers(),
+            'singing': get_singing_speakers()
+        }
+        return jsonify(speakers)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+def generate_normal_speech(text, speaker_name):
+    # ...existing speech generation logic...
+    pass
+
+def generate_celebrity_speech(text, speaker_name):
+    # Implement celebrity voice cloning
+    # Use pre-trained celebrity models
+    pass
+
+def generate_singing_speech(text, speaker_name):
+    # Implement singing voice synthesis
+    # Convert text to singing with specified voice
+    pass
+
+def get_trained_speakers():
+    # ...existing code to get trained speakers...
+    pass
+
+def get_celebrity_speakers():
+    # Return list of available celebrity voices
+    return ['Celebrity1', 'Celebrity2', 'Celebrity3']
+
+def get_singing_speakers():
+    # Return list of available singing voices
+    return ['Singer1', 'Singer2', 'Singer3']
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
