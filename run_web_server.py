@@ -5,7 +5,7 @@ from pathlib import Path
 # Add src directory to path
 sys.path.append(str(Path(__file__).parent / 'src'))
 
-from src.web_api import app
+from app import app
 
 if __name__ == '__main__':
     print("🎙️ Starting Voice Clone Studio Web Server...")
